@@ -1,0 +1,1982 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#08090d">
+    <title>DeepForge — AI Code Studio</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.2/dexie.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg-deep: #08090d;
+            --bg-base: #0d1017;
+            --bg-surface: #131720;
+            --bg-elevated: #1a1f2e;
+            --bg-hover: #1e2435;
+            --border: #1e2435;
+            --border-active: #3d4663;
+            --text-primary: #d4d8e8;
+            --text-secondary: #6b7394;
+            --text-muted: #3d4663;
+            --accent: #6c5ce7;
+            --accent-glow: rgba(108, 92, 231, 0.15);
+            --accent-hover: #7c6ff7;
+            --green: #26de81;
+            --red: #fc5c65;
+            --amber: #f7b731;
+            --cyan: #45aaf2;
+            --orange: #fd9644;
+            --font-code: 'JetBrains Mono', 'Fira Code', monospace;
+            --font-ui: 'DM Sans', system-ui, sans-serif;
+            --radius: 10px;
+            --radius-lg: 16px;
+            --nav-height: 60px;
+            --header-height: 52px;
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-top: env(safe-area-inset-top, 0px);
+        }
+        body {
+            font-family: var(--font-ui);
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior: none;
+            padding-top: var(--safe-top);
+        }
+        .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+        /* HEADER */
+        .header {
+            height: var(--header-height); background: var(--bg-base);
+            border-bottom: 1px solid var(--border); display: flex;
+            align-items: center; padding: 0 16px; gap: 12px;
+            flex-shrink: 0; z-index: 10;
+        }
+        .header-logo {
+            font-family: var(--font-code); font-weight: 700; font-size: 15px;
+            color: var(--accent); display: flex; align-items: center; gap: 8px;
+        }
+        .header-logo .dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--accent); box-shadow: 0 0 8px var(--accent);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .header-project {
+            flex: 1; text-align: center; font-size: 12px;
+            color: var(--text-muted); overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        .header-btn {
+            background: none; border: none; color: var(--text-secondary);
+            font-size: 18px; padding: 6px; cursor: pointer; border-radius: 8px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .header-btn:active { background: var(--bg-hover); }
+
+        /* MAIN */
+        .main { flex: 1; overflow: hidden; position: relative; }
+        .panel { position: absolute; inset: 0; display: none; flex-direction: column; overflow: hidden; }
+        .panel.active { display: flex; }
+
+        /* PROGRESS */
+        .progress-bar { height: 3px; background: var(--bg-elevated); position: relative; overflow: hidden; display: none; }
+        .progress-bar.active { display: block; }
+        .progress-fill { height: 100%; background: var(--accent); transition: width 0.2s; box-shadow: 0 0 6px var(--accent); }
+
+        /* BOTTOM NAV */
+        .bottom-nav {
+            height: var(--nav-height); padding-bottom: var(--safe-bottom);
+            background: var(--bg-base); border-top: 1px solid var(--border);
+            display: flex; justify-content: space-around; align-items: center;
+            flex-shrink: 0; z-index: 10;
+        }
+        .nav-item {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            padding: 6px 12px; border: none; background: none; color: var(--text-muted);
+            font-size: 10px; font-family: var(--font-ui); cursor: pointer;
+            border-radius: 10px; transition: color 0.15s;
+            -webkit-tap-highlight-color: transparent; position: relative;
+        }
+        .nav-item .nav-icon { font-size: 20px; }
+        .nav-item.active { color: var(--accent); }
+        .nav-item.active::after {
+            content: ''; position: absolute; top: -1px; left: 50%;
+            transform: translateX(-50%); width: 20px; height: 3px;
+            background: var(--accent); border-radius: 0 0 3px 3px;
+        }
+        .nav-item:active { background: var(--bg-hover); }
+
+        /* CHAT */
+        .chat-messages {
+            flex: 1; overflow-y: auto; padding: 16px;
+            display: flex; flex-direction: column; gap: 10px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .chat-messages::-webkit-scrollbar { width: 3px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .msg { max-width: 92%; animation: msgIn 0.2s ease-out; }
+        @keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        .msg-user {
+            align-self: flex-end; background: var(--accent); color: white;
+            padding: 10px 14px; border-radius: 16px 16px 4px 16px;
+            font-size: 14px; word-break: break-word; white-space: pre-wrap;
+        }
+        .msg-assistant {
+            align-self: flex-start; background: var(--bg-surface);
+            border: 1px solid var(--border); padding: 12px 14px;
+            border-radius: 4px 16px 16px 16px; font-size: 14px;
+            word-break: break-word; line-height: 1.55;
+        }
+        .msg-assistant pre {
+            background: var(--bg-deep); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 12px; margin: 8px 0;
+            overflow-x: auto; font-family: var(--font-code); font-size: 12px;
+            white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+        }
+        .msg-assistant code {
+            font-family: var(--font-code); background: var(--bg-deep);
+            padding: 2px 6px; border-radius: 4px; font-size: 12px;
+        }
+        .msg-system {
+            text-align: center; color: var(--text-muted); font-size: 12px;
+            padding: 4px; align-self: center; max-width: 100%;
+        }
+        .msg-assistant .action-buttons { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .apply-btn, .reject-btn, .diff-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 8px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 13px; font-weight: 600; font-family: var(--font-ui); border: none;
+        }
+        .apply-btn { background: var(--green); color: var(--bg-deep); }
+        .apply-btn:active { filter: brightness(0.9); }
+        .reject-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); font-weight: 400; }
+        .reject-btn:active { background: var(--bg-hover); }
+        .diff-btn { background: var(--cyan); color: var(--bg-deep); }
+        .diff-btn:active { filter: brightness(0.9); }
+
+        .chat-input-area { padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg-base); }
+        .context-tags { display: flex; flex-wrap: wrap; gap: 5px; padding-bottom: 8px; }
+        .context-tags:empty { display: none; }
+        .ctx-tag {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--cyan); font-size: 11px; padding: 3px 8px;
+            border-radius: 5px; display: flex; align-items: center; gap: 5px;
+            font-family: var(--font-code);
+        }
+        .ctx-tag .remove { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+        .ctx-tag .remove:active { color: var(--red); }
+        .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+        .chat-input {
+            flex: 1; background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 10px 14px;
+            color: var(--text-primary); font-size: 15px; font-family: var(--font-ui);
+            outline: none; resize: none; min-height: 44px; max-height: 100px; line-height: 1.4;
+        }
+        .chat-input:focus { border-color: var(--accent); }
+        .chat-input::placeholder { color: var(--text-muted); }
+        .chat-send {
+            background: var(--accent); border: none; color: white;
+            width: 44px; height: 44px; border-radius: var(--radius); cursor: pointer;
+            font-size: 18px; flex-shrink: 0; display: flex;
+            align-items: center; justify-content: center;
+        }
+        .chat-send:active { background: var(--accent-hover); }
+        .chat-send:disabled { opacity: 0.4; }
+        .quick-row { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; padding-bottom: 2px; }
+        .quick-row::-webkit-scrollbar { display: none; }
+        .quick-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--text-secondary); font-size: 12px; padding: 6px 12px;
+            border-radius: 16px; cursor: pointer; font-family: var(--font-ui);
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .quick-btn:active { background: var(--bg-hover); color: var(--text-primary); }
+
+        .typing-indicator { display: flex; gap: 4px; padding: 4px 0; }
+        .typing-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--accent); animation: bounce 1.2s ease-in-out infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: .15s; }
+        .typing-dot:nth-child(3) { animation-delay: .3s; }
+        @keyframes bounce { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-6px);opacity:1} }
+
+        /* FILES */
+        .files-toolbar { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .tool-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--text-primary); font-size: 13px; padding: 8px 12px;
+            border-radius: var(--radius); cursor: pointer; font-family: var(--font-ui);
+            display: flex; align-items: center; gap: 6px;
+            flex: 1; justify-content: center; min-width: 70px;
+        }
+        .tool-btn:active { background: var(--bg-hover); }
+        .tool-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+        .tool-btn.primary:active { background: var(--accent-hover); }
+        .tool-btn.success { background: var(--green); border-color: var(--green); color: var(--bg-deep); font-weight: 600; }
+        .tool-btn.success:active { filter: brightness(0.9); }
+
+        .file-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .file-list::-webkit-scrollbar { width: 3px; }
+        .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .file-group-header {
+            padding: 10px 16px 4px; font-size: 11px;
+            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted); font-weight: 600;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .file-item {
+            display: flex; align-items: center; padding: 10px 16px; gap: 10px;
+            cursor: pointer; border-bottom: 1px solid rgba(30,36,53,0.5);
+            transition: background 0.1s;
+        }
+        .file-item:active { background: var(--bg-hover); }
+        .file-item.modified { background: rgba(247, 183, 49, 0.05); }
+        .file-item.modified .file-name::after { content: ' •'; color: var(--amber); }
+        .file-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+        .file-info { flex: 1; min-width: 0; }
+        .file-name {
+            font-size: 14px; color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .file-actions { display: flex; gap: 4px; }
+        .file-action-btn {
+            background: none; border: none; color: var(--text-muted);
+            font-size: 16px; padding: 4px 6px; cursor: pointer; border-radius: 6px;
+        }
+        .file-action-btn:active { background: var(--bg-hover); color: var(--text-primary); }
+        .files-empty {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 12px;
+            color: var(--text-muted); padding: 40px; text-align: center;
+        }
+        .files-empty .empty-icon { font-size: 48px; opacity: 0.3; }
+        .files-empty p { font-size: 14px; }
+        .file-count {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--text-secondary); font-size: 11px; padding: 2px 8px;
+            border-radius: 10px; font-family: var(--font-code);
+        }
+
+        /* RECENT */
+        .recent-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .recent-item {
+            display: flex; align-items: center; gap: 12px; padding: 12px;
+            background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius); margin-bottom: 6px; cursor: pointer;
+        }
+        .recent-item:active { background: var(--bg-hover); }
+        .recent-item .file-icon { font-size: 20px; }
+        .recent-item .recent-info { flex: 1; min-width: 0; }
+        .recent-item .recent-path {
+            font-size: 13px; color: var(--text-primary); white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; font-family: var(--font-code);
+        }
+        .recent-item .recent-time { font-size: 11px; color: var(--text-muted); }
+
+        /* SEARCH */
+        .search-bar { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+        .search-input {
+            flex: 1; background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 10px 14px;
+            color: var(--text-primary); font-size: 15px; font-family: var(--font-ui); outline: none;
+        }
+        .search-input:focus { border-color: var(--accent); }
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-go {
+            background: var(--amber); border: none; color: var(--bg-deep);
+            width: 44px; border-radius: var(--radius); cursor: pointer;
+            font-size: 18px; flex-shrink: 0;
+        }
+        .search-go:active { filter: brightness(0.9); }
+        .search-results { flex: 1; overflow-y: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
+        .search-result-card {
+            background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius); margin-bottom: 8px; overflow: hidden;
+        }
+        .search-result-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 12px; cursor: pointer;
+        }
+        .search-result-header:active { background: var(--bg-hover); }
+        .search-result-file { color: var(--amber); font-weight: 500; font-size: 13px; word-break: break-all; }
+        .search-result-count { color: var(--text-muted); font-size: 11px; flex-shrink: 0; margin-left: 8px; }
+        .search-result-lines {
+            border-top: 1px solid var(--border); padding: 8px 12px;
+            font-family: var(--font-code); font-size: 12px;
+            max-height: 150px; overflow-y: auto;
+        }
+        .search-line { padding: 2px 0; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all; }
+        .search-line .ln { color: var(--text-muted); margin-right: 8px; }
+        .search-line mark { background: var(--amber); color: var(--bg-deep); padding: 0 2px; border-radius: 2px; }
+
+        /* MODALS */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+            display: flex; align-items: flex-end; justify-content: center;
+            z-index: 100; padding: 0;
+        }
+        .modal-overlay.hidden { display: none; }
+        .modal-sheet {
+            background: var(--bg-surface); border-top: 1px solid var(--border-active);
+            border-radius: 20px 20px 0 0; padding: 24px 20px;
+            padding-bottom: calc(24px + var(--safe-bottom));
+            width: 100%; max-width: 500px; max-height: 85vh;
+            overflow-y: auto; animation: sheetUp 0.25s ease-out;
+        }
+        @keyframes sheetUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+        .modal-sheet .handle {
+            width: 36px; height: 4px; background: var(--border-active);
+            border-radius: 2px; margin: 0 auto 20px;
+        }
+        .modal-sheet h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .modal-sheet .subtitle { color: var(--text-secondary); font-size: 13px; margin-bottom: 20px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
+        .field input, .field textarea, .field select {
+            width: 100%; background: var(--bg-deep); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 12px 14px;
+            color: var(--text-primary); font-size: 15px;
+            font-family: var(--font-ui); outline: none;
+        }
+        .field textarea { font-family: var(--font-code); font-size: 13px; min-height: 80px; resize: vertical; }
+        .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+        .field .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .field .hint a { color: var(--cyan); text-decoration: none; }
+        .field .hint code { background: var(--bg-elevated); padding: 1px 5px; border-radius: 3px; font-family: var(--font-code); }
+        .btn-primary {
+            width: 100%; padding: 14px; background: var(--accent);
+            color: white; border: none; border-radius: var(--radius);
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            font-family: var(--font-ui); margin-top: 8px;
+        }
+        .btn-primary:active { background: var(--accent-hover); }
+
+        /* VIEWER */
+        .viewer-modal {
+            position: fixed; inset: 0; background: var(--bg-deep);
+            z-index: 90; display: none; flex-direction: column;
+            padding-top: var(--safe-top);
+        }
+        .viewer-modal.open { display: flex; }
+        .viewer-header {
+            display: flex; align-items: center; padding: 12px 16px; gap: 12px;
+            border-bottom: 1px solid var(--border); background: var(--bg-base);
+        }
+        .viewer-header .back-btn {
+            background: none; border: none; color: var(--text-primary);
+            font-size: 20px; padding: 4px 8px; cursor: pointer;
+        }
+        .viewer-header .vf-name {
+            flex: 1; font-size: 14px; font-family: var(--font-code);
+            color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .viewer-header .vf-actions { display: flex; gap: 4px; }
+        .viewer-header .vf-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--text-primary); padding: 6px 10px; border-radius: 6px;
+            font-size: 12px; cursor: pointer; font-family: var(--font-ui);
+        }
+        .viewer-header .vf-btn:active { background: var(--bg-hover); }
+        .viewer-header .vf-btn.dirty { color: var(--amber); border-color: var(--amber); }
+        .viewer-body { flex: 1; display: flex; overflow: hidden; position: relative; }
+        .viewer-linenums {
+            font-family: var(--font-code); font-size: 12px; line-height: 1.65;
+            padding: 10px 8px; text-align: right; color: var(--text-muted);
+            user-select: none; min-width: 36px; background: var(--bg-base);
+            border-right: 1px solid var(--border); overflow: hidden; white-space: pre;
+        }
+        .viewer-textarea {
+            flex: 1; font-family: var(--font-code); font-size: 12px; line-height: 1.65;
+            padding: 10px 12px; background: transparent; color: var(--text-primary);
+            border: none; outline: none; resize: none; white-space: pre; tab-size: 2;
+            overflow: auto; -webkit-text-fill-color: var(--text-primary);
+        }
+        .viewer-statusbar {
+            background: var(--bg-base); border-top: 1px solid var(--border);
+            padding: 4px 14px; display: flex; justify-content: space-between;
+            font-size: 11px; color: var(--text-muted);
+        }
+        .binary-preview {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 12px; color: var(--text-muted);
+            text-align: center; padding: 40px;
+        }
+        .binary-preview img {
+            max-width: 90%; max-height: 60vh; border-radius: 8px; border: 1px solid var(--border);
+        }
+
+        /* DIFF */
+        .diff-modal {
+            position: fixed; inset: 0; background: var(--bg-deep);
+            z-index: 95; display: none; flex-direction: column;
+            padding-top: var(--safe-top);
+        }
+        .diff-modal.open { display: flex; }
+        .diff-content {
+            flex: 1; overflow: auto; font-family: var(--font-code);
+            font-size: 12px; padding: 8px 0; line-height: 1.5;
+        }
+        .diff-line { display: flex; white-space: pre; }
+        .diff-line .lnum {
+            min-width: 40px; text-align: right; padding: 0 8px;
+            color: var(--text-muted); user-select: none; flex-shrink: 0;
+        }
+        .diff-line .ldata { flex: 1; padding-right: 12px; word-break: break-all; }
+        .diff-line.add { background: rgba(38,222,129,0.12); }
+        .diff-line.add .ldata::before { content: '+ '; color: var(--green); }
+        .diff-line.del { background: rgba(252,92,101,0.12); }
+        .diff-line.del .ldata::before { content: '- '; color: var(--red); }
+        .diff-line.ctx .ldata::before { content: '  '; color: var(--text-muted); }
+
+        /* TOAST */
+        .toast {
+            position: fixed; bottom: calc(var(--nav-height) + 16px + var(--safe-bottom));
+            left: 50%; transform: translateX(-50%);
+            background: var(--bg-elevated); border: 1px solid var(--border-active);
+            color: var(--text-primary); padding: 10px 24px; border-radius: 12px;
+            font-size: 13px; font-family: var(--font-ui); z-index: 300;
+            animation: msgIn 0.2s ease-out; pointer-events: none;
+            max-width: 90%; text-align: center;
+        }
+        .toast.error { border-color: var(--red); color: var(--red); }
+        .toast.success { border-color: var(--green); color: var(--green); }
+
+        * { scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <div class="header">
+        <div class="header-logo"><span class="dot"></span> DeepForge</div>
+        <div class="header-project" id="projectName">Κανένα project</div>
+        <button class="header-btn" onclick="openSettings()" aria-label="Ρυθμίσεις">⚙</button>
+    </div>
+
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+
+    <div class="main">
+        <div class="panel active" id="panel-chat">
+            <div class="chat-messages" id="chatMessages">
+                <div class="msg msg-system">👋 Φόρτωσε ένα project από την καρτέλα <b>Files</b> και ρώτησέ με ό,τι θες.</div>
+            </div>
+            <div class="chat-input-area">
+                <div class="context-tags" id="contextTags"></div>
+                <div class="chat-input-row">
+                    <textarea class="chat-input" id="chatInput" placeholder="Γράψε μου τι θες..." rows="1"></textarea>
+                    <button class="chat-send" id="sendBtn" onclick="sendMessage()" aria-label="Αποστολή">▶</button>
+                </div>
+                <div class="quick-row">
+                    <button class="quick-btn" onclick="quickAction('explain')">💡 Εξήγησε</button>
+                    <button class="quick-btn" onclick="quickAction('fix')">🔧 Διόρθωσε</button>
+                    <button class="quick-btn" onclick="quickAction('refactor')">♻ Refactor</button>
+                    <button class="quick-btn" onclick="quickAction('test')">🧪 Tests</button>
+                    <button class="quick-btn" onclick="quickAction('review')">📋 Review</button>
+                    <button class="quick-btn" onclick="clearChat()">🗑 Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-files">
+            <div class="files-toolbar">
+                <button class="tool-btn primary" onclick="importZip()">📦 ZIP</button>
+                <button class="tool-btn" onclick="fetchFromGitHub()">⬇ Pull</button>
+                <button class="tool-btn success" onclick="pushToGitHub()" id="pushBtn">⬆ Push</button>
+                <button class="tool-btn" onclick="downloadAll()">📥 Λήψη</button>
+                <button class="tool-btn" onclick="createNewFile()">+ Νέο</button>
+            </div>
+            <div class="file-list" id="fileList">
+                <div class="files-empty">
+                    <div class="empty-icon">📂</div>
+                    <p>Φόρτωσε ένα project</p>
+                    <p style="font-size:12px;">Πάτα <b>📦 ZIP</b> ή <b>⬇ Pull</b></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-editor">
+            <div class="files-toolbar">
+                <button class="tool-btn" onclick="switchTab('files')">📁 Όλα τα αρχεία</button>
+                <button class="tool-btn" onclick="createNewFile()">+ Νέο</button>
+            </div>
+            <div class="recent-list" id="recentList">
+                <div class="files-empty">
+                    <div class="empty-icon">⟨/⟩</div>
+                    <p>Δεν έχεις ανοίξει αρχεία ακόμα</p>
+                    <p style="font-size:12px;">Άνοιξε ένα από το <b>Files</b></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-search">
+            <div class="search-bar">
+                <input class="search-input" id="searchInput" placeholder="Αναζήτηση στα αρχεία..." enterkeyhint="search">
+                <button class="search-go" onclick="doSearch()" aria-label="Αναζήτηση">🔍</button>
+            </div>
+            <div class="search-results" id="searchResults">
+                <div style="padding:40px;text-align:center;color:var(--text-muted);font-size:13px;">
+                    Ψάξε κάτι στα αρχεία σου
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-nav">
+        <button class="nav-item active" data-tab="chat" onclick="switchTab('chat')"><span class="nav-icon">💬</span> Chat</button>
+        <button class="nav-item" data-tab="files" onclick="switchTab('files')"><span class="nav-icon">📁</span> Files</button>
+        <button class="nav-item" data-tab="editor" onclick="switchTab('editor')"><span class="nav-icon">✏️</span> Recent</button>
+        <button class="nav-item" data-tab="search" onclick="switchTab('search')"><span class="nav-icon">🔍</span> Search</button>
+    </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settingsModal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="modal-sheet">
+        <div class="handle"></div>
+        <h2>⚙ Ρυθμίσεις</h2>
+        <p class="subtitle">Ρύθμισε το DeepForge για το project σου.</p>
+        <div class="field">
+            <label>DeepSeek API Key</label>
+            <input type="password" id="sApiKey" placeholder="sk-..." autocomplete="off">
+            <div class="hint">Πάρε ένα από <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a></div>
+        </div>
+        <div class="field">
+            <label>Μοντέλο</label>
+            <select id="sModel">
+                <option value="deepseek-chat">deepseek-chat (γρήγορο)</option>
+                <option value="deepseek-reasoner">deepseek-reasoner (έξυπνο, αργό)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>GitHub Owner / Username</label>
+            <input type="text" id="sGhOwner" placeholder="π.χ. myusername" autocomplete="off">
+        </div>
+        <div class="field">
+            <label>GitHub Repo</label>
+            <input type="text" id="sGhRepo" placeholder="π.χ. my-project" autocomplete="off">
+        </div>
+        <div class="field">
+            <label>GitHub Branch</label>
+            <input type="text" id="sGhBranch" placeholder="main" autocomplete="off">
+            <div class="hint">Άφησέ το κενό για default branch του repo</div>
+        </div>
+        <div class="field">
+            <label>GitHub Token (για Push & private repos)</label>
+            <input type="password" id="sGhToken" placeholder="ghp_..." autocomplete="off">
+            <div class="hint">Δημιούργησε στο <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> με scope <code>repo</code></div>
+        </div>
+        <div class="field">
+            <label>System Prompt (προαιρετικό)</label>
+            <textarea id="sPrompt" placeholder="Άφησέ το κενό για default..."></textarea>
+        </div>
+        <button class="btn-primary" onclick="saveSettings()">Αποθήκευση</button>
+    </div>
+</div>
+
+<!-- COMMIT -->
+<div id="commitModal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="modal-sheet">
+        <div class="handle"></div>
+        <h2>⬆ Push στο GitHub</h2>
+        <p class="subtitle" id="commitSubtitle">Αλλαγμένα αρχεία θα ανέβουν στο repo.</p>
+        <div class="field">
+            <label>Commit message</label>
+            <input type="text" id="commitMsg" placeholder="Update from DeepForge" value="Update from DeepForge">
+        </div>
+        <button class="btn-primary" onclick="doPushToGitHub()">Push τώρα</button>
+        <button class="reject-btn" style="width:100%;margin-top:8px;padding:12px;justify-content:center;" onclick="document.getElementById('commitModal').classList.add('hidden')">Άκυρο</button>
+    </div>
+</div>
+
+<!-- VIEWER -->
+<div class="viewer-modal" id="viewerModal">
+    <div class="viewer-header">
+        <button class="back-btn" onclick="closeViewer()" aria-label="Πίσω">←</button>
+        <span class="vf-name" id="viewerFileName"></span>
+        <div class="vf-actions">
+            <button class="vf-btn" onclick="addViewerToContext()">+Ctx</button>
+            <button class="vf-btn" id="viewerSaveBtn" onclick="saveViewerFile()">💾</button>
+        </div>
+    </div>
+    <div class="viewer-body" id="viewerBody">
+        <div class="viewer-linenums" id="viewerLineNums"></div>
+        <textarea class="viewer-textarea" id="viewerTextarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+    </div>
+    <div class="viewer-statusbar">
+        <span id="viewerStatus">—</span>
+        <span id="viewerCursor"></span>
+    </div>
+</div>
+
+<!-- DIFF -->
+<div class="diff-modal" id="diffModal">
+    <div class="viewer-header">
+        <button class="back-btn" onclick="closeDiff()" aria-label="Πίσω">←</button>
+        <span class="vf-name" id="diffFileName"></span>
+        <div class="vf-actions">
+            <button class="vf-btn" style="background:var(--green);color:var(--bg-deep);font-weight:600;" onclick="applyPendingFromDiff()">✓ Εφαρμογή</button>
+        </div>
+    </div>
+    <div class="diff-content" id="diffContent"></div>
+</div>
+
+<script>
+// ===================== DATABASE =====================
+const db = new Dexie('DeepForgeStudioV3');
+db.version(1).stores({
+    settings: 'key',
+    messages: '++id, timestamp',
+    files: 'path',
+    recent: 'path, lastOpened'
+});
+
+// ===================== STATE =====================
+let repoFiles = [];          // [{path, content, sha?, binary?, modified?}]
+let isProcessing = false;
+let pendingChange = null;    // {path, content}
+let contextFiles = [];
+let currentViewerPath = null;
+let viewerDirty = false;
+let viewerOriginal = '';
+let autoSaveTimer = null;
+
+// settings (cached in memory)
+let ghOwner = '';
+let ghRepo = '';
+let ghBranch = '';
+let ghToken = '';
+let model = 'deepseek-chat';
+let customPrompt = '';
+
+const API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
+// Text file extensions (everything else treated as binary)
+const TEXT_EXTS = new Set([
+    'js','jsx','ts','tsx','mjs','cjs','vue','svelte',
+    'html','htm','xml','svg','xhtml',
+    'css','scss','sass','less','styl',
+    'json','json5','jsonc','yml','yaml','toml','ini','env','conf','cfg',
+    'md','markdown','rst','txt','log',
+    'py','rb','php','pl','lua','r','jl','dart','kt','kts','swift','go','rs','c','h','cpp','hpp','cc','cs','java','scala','clj','ex','exs','erl','hs','ml','fs','fsx','vb',
+    'sh','bash','zsh','fish','ps1','bat','cmd','make','mk','dockerfile','dockerignore','gitignore','gitattributes','editorconfig',
+    'sql','graphql','gql','proto','tex','bib',
+    'csv','tsv','tex','m','asm','s'
+]);
+
+const BINARY_PREVIEW_EXTS = new Set(['png','jpg','jpeg','gif','webp','svg','ico','bmp']);
+
+// ===================== INIT =====================
+window.addEventListener('load', async () => {
+    try {
+        await loadSettings();
+
+        if (!await getSetting('apiKey')) {
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        const allFiles = await db.files.toArray();
+        repoFiles = allFiles.map(f => ({
+            path: f.path,
+            content: f.content,
+            sha: f.sha || null,
+            binary: f.binary || false,
+            modified: f.modified || false
+        }));
+
+        if (repoFiles.length > 0) {
+            updateProjectName();
+        }
+        renderFileList();
+        renderRecentList();
+
+        const msgs = await db.messages.orderBy('timestamp').toArray();
+        const recent = msgs.slice(-30); // limit initial render
+        recent.forEach(m => appendBubble(m.role, m.content, false));
+        scrollChat();
+    } catch (e) {
+        console.error(e);
+        showToast('Σφάλμα εκκίνησης: ' + e.message, 'error');
+    }
+});
+
+async function loadSettings() {
+    ghOwner = (await getSetting('ghOwner')) || '';
+    ghRepo = (await getSetting('ghRepo')) || '';
+    ghBranch = (await getSetting('ghBranch')) || '';
+    ghToken = (await getSetting('ghToken')) || '';
+    model = (await getSetting('model')) || 'deepseek-chat';
+    customPrompt = (await getSetting('customPrompt')) || '';
+}
+
+function updateProjectName() {
+    const name = ghRepo || (repoFiles.length ? `${repoFiles.length} αρχεία` : 'Κανένα project');
+    document.getElementById('projectName').textContent = name;
+}
+
+// ===================== HELPERS =====================
+async function getSetting(k) {
+    try { return (await db.settings.get(k))?.value || ''; } catch { return ''; }
+}
+async function setSetting(k, v) { await db.settings.put({ key: k, value: v }); }
+
+function escHtml(t) {
+    if (t == null) return '';
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Use data-attributes instead of escaped JS strings — much safer
+function attrEsc(s) { return escHtml(s); }
+
+function showToast(msg, type) {
+    document.querySelectorAll('.toast').forEach(e => e.remove());
+    const el = document.createElement('div');
+    el.className = 'toast' + (type ? ' ' + type : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), type === 'error' ? 4000 : 2500);
+}
+
+function setProgress(percent) {
+    const bar = document.getElementById('progressBar');
+    const fill = document.getElementById('progressFill');
+    if (percent === null || percent < 0) {
+        bar.classList.remove('active');
+        fill.style.width = '0%';
+    } else {
+        bar.classList.add('active');
+        fill.style.width = Math.min(100, Math.max(0, percent)) + '%';
+        if (percent >= 100) setTimeout(() => bar.classList.remove('active'), 400);
+    }
+}
+
+function getExt(name) {
+    const i = name.lastIndexOf('.');
+    return i > -1 ? name.slice(i + 1).toLowerCase() : '';
+}
+
+function isTextFile(path) {
+    const ext = getExt(path);
+    if (!ext) {
+        // Files without extension that are common text files
+        const base = path.split('/').pop().toLowerCase();
+        return ['dockerfile','makefile','rakefile','procfile','license','readme','changelog','authors','contributors'].includes(base);
+    }
+    return TEXT_EXTS.has(ext);
+}
+
+function getFileIcon(name) {
+    const ext = getExt(name);
+    const icons = {
+        js:'🟨', jsx:'⚛', ts:'🔷', tsx:'⚛', mjs:'🟨', cjs:'🟨',
+        html:'🌐', htm:'🌐', css:'🎨', scss:'🎨', sass:'🎨', less:'🎨',
+        json:'{}', md:'📝', markdown:'📝',
+        py:'🐍', rb:'💎', php:'🐘', go:'🐹', rs:'🦀', java:'☕', kt:'🟪',
+        c:'⚙', h:'⚙', cpp:'⚙', hpp:'⚙',
+        svg:'🖼', png:'🖼', jpg:'🖼', jpeg:'🖼', gif:'🖼', webp:'🖼', ico:'🖼',
+        yml:'⚙', yaml:'⚙', toml:'⚙', ini:'⚙', env:'🔒',
+        sh:'⬛', bash:'⬛', zsh:'⬛',
+        lock:'🔒', sql:'🗃', graphql:'◈',
+        vue:'💚', svelte:'🧡', dart:'🎯', swift:'🦅',
+        pdf:'📕', zip:'📦', tar:'📦', gz:'📦'
+    };
+    return icons[ext] || '📄';
+}
+
+// ===================== TABS =====================
+function switchTab(tab) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.nav-item[data-tab="${tab}"]`)?.classList.add('active');
+    if (tab === 'search') setTimeout(() => document.getElementById('searchInput')?.focus(), 100);
+    if (tab === 'editor') renderRecentList();
+}
+
+// ===================== SETTINGS =====================
+async function openSettings() {
+    document.getElementById('sApiKey').value = await getSetting('apiKey');
+    document.getElementById('sModel').value = (await getSetting('model')) || 'deepseek-chat';
+    document.getElementById('sGhOwner').value = ghOwner;
+    document.getElementById('sGhRepo').value = ghRepo;
+    document.getElementById('sGhBranch').value = ghBranch;
+    document.getElementById('sGhToken').value = ghToken;
+    document.getElementById('sPrompt').value = customPrompt;
+    document.getElementById('settingsModal').classList.remove('hidden');
+}
+
+async function saveSettings() {
+    const key = document.getElementById('sApiKey').value.trim();
+    ghOwner = document.getElementById('sGhOwner').value.trim();
+    ghRepo = document.getElementById('sGhRepo').value.trim();
+    ghBranch = document.getElementById('sGhBranch').value.trim();
+    ghToken = document.getElementById('sGhToken').value.trim();
+    model = document.getElementById('sModel').value;
+    customPrompt = document.getElementById('sPrompt').value.trim();
+
+    if (key) await setSetting('apiKey', key);
+    await setSetting('model', model);
+    await setSetting('ghOwner', ghOwner);
+    await setSetting('ghRepo', ghRepo);
+    await setSetting('ghBranch', ghBranch);
+    await setSetting('ghToken', ghToken);
+    await setSetting('customPrompt', customPrompt);
+
+    document.getElementById('settingsModal').classList.add('hidden');
+    updateProjectName();
+    showToast('Αποθηκεύτηκε!', 'success');
+}
+
+// ===================== FILE LIST =====================
+function renderFileList() {
+    const container = document.getElementById('fileList');
+    if (repoFiles.length === 0) {
+        container.innerHTML = `<div class="files-empty"><div class="empty-icon">📂</div><p>Φόρτωσε ένα project</p><p style="font-size:12px">Πάτα <b>📦 ZIP</b> ή <b>⬇ Pull</b></p></div>`;
+        return;
+    }
+
+    const groups = {};
+    repoFiles.forEach(f => {
+        const parts = f.path.split('/');
+        const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+        if (!groups[folder]) groups[folder] = [];
+        groups[folder].push(f);
+    });
+
+    let html = '';
+    const sortedFolders = Object.keys(groups).sort();
+    for (const folder of sortedFolders) {
+        const folderName = folder === '.' ? 'root' : folder;
+        html += `<div class="file-group-header"><span>${escHtml(folderName)}</span> <span class="file-count">${groups[folder].length}</span></div>`;
+        groups[folder].sort((a, b) => a.path.localeCompare(b.path)).forEach(f => {
+            const name = f.path.split('/').pop();
+            const icon = getFileIcon(name);
+            const cls = f.modified ? 'file-item modified' : 'file-item';
+            html += `<div class="${cls}" data-path="${attrEsc(f.path)}" data-action="open">
+                <span class="file-icon">${icon}</span>
+                <div class="file-info"><div class="file-name">${escHtml(name)}</div></div>
+                <div class="file-actions">
+                    <button class="file-action-btn" data-path="${attrEsc(f.path)}" data-action="ctx" title="Add to context">📎</button>
+                    <button class="file-action-btn" data-path="${attrEsc(f.path)}" data-action="rename" title="Rename">✏️</button>
+                    <button class="file-action-btn" data-path="${attrEsc(f.path)}" data-action="download" title="Download">⬇</button>
+                    <button class="file-action-btn" data-path="${attrEsc(f.path)}" data-action="delete" title="Delete">🗑</button>
+                </div>
+            </div>`;
+        });
+    }
+    container.innerHTML = html;
+}
+
+// Event delegation for file list — safer than inline onclick with paths
+document.getElementById('fileList').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const path = btn.dataset.path;
+    const action = btn.dataset.action;
+    e.stopPropagation();
+    switch (action) {
+        case 'open': openViewer(path); break;
+        case 'ctx': addContextFile(path); showToast('Προστέθηκε στο context'); break;
+        case 'download': downloadSingle(path); break;
+        case 'delete': deleteFile(path); break;
+        case 'rename': renameFile(path); break;
+    }
+});
+
+// ===================== ZIP IMPORT (fixed!) =====================
+async function importZip() {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.zip,application/zip,application/x-zip-compressed';
+    inp.onchange = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        await processZipFile(file);
+        // cleanup
+        inp.value = '';
+    };
+    inp.click();
+}
+
+async function processZipFile(file) {
+    showToast('Φόρτωση ZIP...');
+    setProgress(2);
+    try {
+        if (file.size > 50 * 1024 * 1024) {
+            const ok = confirm(`Το αρχείο είναι ${(file.size/1024/1024).toFixed(1)}MB. Συνέχεια;`);
+            if (!ok) { setProgress(null); return; }
+        }
+
+        const zip = await JSZip.loadAsync(file);
+        setProgress(10);
+
+        // Collect all non-dir, non-junk entries
+        const entries = [];
+        zip.forEach((path, entry) => {
+            if (entry.dir) return;
+            if (path.includes('node_modules/') || path.includes('.git/') ||
+                path.includes('__MACOSX') || path.endsWith('.DS_Store') ||
+                path.startsWith('.') && path.split('/')[0] === '.git') return;
+            entries.push({ path, entry });
+        });
+
+        if (entries.length === 0) {
+            setProgress(null);
+            showToast('Άδειο ZIP ή μόνο node_modules/.git', 'error');
+            return;
+        }
+
+        // Find common prefix (e.g. "myrepo-main/")
+        const allPaths = entries.map(e => e.path);
+        const prefix = findCommonPrefix(allPaths);
+
+        // Clear previous
+        repoFiles = [];
+        await db.files.clear();
+        contextFiles = [];
+        renderContextTags();
+
+        const newFiles = [];
+        const failures = [];
+        let processed = 0;
+
+        // Process in batches to keep UI responsive
+        const BATCH = 10;
+        for (let i = 0; i < entries.length; i += BATCH) {
+            const batch = entries.slice(i, i + BATCH);
+            await Promise.all(batch.map(async ({ path, entry }) => {
+                try {
+                    const clean = path.startsWith(prefix) ? path.slice(prefix.length) : path;
+                    if (!clean) return;
+
+                    const isText = isTextFile(clean);
+                    let content, binary = false;
+
+                    if (isText) {
+                        content = await entry.async('text');
+                    } else {
+                        // Binary files: store as base64 (small ones only) or skip large
+                        const blob = await entry.async('blob');
+                        if (blob.size > 1024 * 1024) {
+                            // skip large binaries
+                            return;
+                        }
+                        content = await blobToBase64(blob);
+                        binary = true;
+                    }
+                    newFiles.push({ path: clean, content, binary, modified: false });
+                } catch (err) {
+                    failures.push(path);
+                    console.warn('Skipped:', path, err.message);
+                }
+                processed++;
+                setProgress(10 + (processed / entries.length) * 85);
+            }));
+        }
+
+        // Save to DB and memory
+        repoFiles = newFiles;
+        await db.files.bulkPut(newFiles.map(f => ({
+            path: f.path, content: f.content, binary: f.binary, modified: false, sha: null
+        })));
+
+        // Set project name from filename
+        const projName = file.name.replace(/\.zip$/i, '');
+        document.getElementById('projectName').textContent = projName;
+
+        renderFileList();
+        setProgress(100);
+
+        const txt = `📦 Φορτώθηκαν ${repoFiles.length} αρχεία${failures.length ? ` (${failures.length} αγνοήθηκαν)` : ''}.`;
+        appendBubble('system', txt);
+        showToast(`${repoFiles.length} αρχεία ✓`, 'success');
+    } catch (e) {
+        console.error(e);
+        setProgress(null);
+        showToast('Σφάλμα ZIP: ' + e.message, 'error');
+        appendBubble('system', `❌ Σφάλμα ZIP: ${escHtml(e.message)}`);
+    }
+}
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result;
+            const idx = result.indexOf(',');
+            resolve(idx > -1 ? result.slice(idx + 1) : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+function findCommonPrefix(paths) {
+    if (!paths.length) return '';
+    if (paths.length === 1) {
+        const idx = paths[0].indexOf('/');
+        return idx > -1 ? paths[0].slice(0, idx + 1) : '';
+    }
+    const parts = paths[0].split('/');
+    let prefix = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+        const candidate = prefix + parts[i] + '/';
+        if (paths.every(p => p.startsWith(candidate))) prefix = candidate;
+        else break;
+    }
+    return prefix;
+}
+
+// ===================== GITHUB FETCH =====================
+async function fetchFromGitHub() {
+    if (!ghOwner || !ghRepo) {
+        openSettings();
+        showToast('Ρύθμισε πρώτα GitHub owner & repo');
+        return;
+    }
+    showToast('Λήψη από GitHub...');
+    setProgress(5);
+    appendBubble('system', `🔄 Λήψη <code>${escHtml(ghOwner)}/${escHtml(ghRepo)}</code>...`);
+
+    const headers = { 'Accept': 'application/vnd.github+json' };
+    if (ghToken) headers['Authorization'] = `Bearer ${ghToken}`;
+
+    try {
+        // 1. Get repo info → branch
+        const repoResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}`, { headers });
+        if (!repoResp.ok) {
+            throw new Error(`Repo ${repoResp.status}: ${repoResp.status === 404 ? 'Δεν βρέθηκε ή είναι private (χρειάζεσαι token)' : await repoResp.text()}`);
+        }
+        const info = await repoResp.json();
+        const branch = ghBranch || info.default_branch;
+        setProgress(15);
+
+        // 2. Get tree
+        const treeResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/trees/${branch}?recursive=1`, { headers });
+        if (!treeResp.ok) throw new Error(`Tree ${treeResp.status}`);
+        const tree = await treeResp.json();
+
+        if (tree.truncated) {
+            appendBubble('system', '⚠️ Το repo είναι πολύ μεγάλο, τα αποτελέσματα είναι κομμένα.');
+        }
+
+        const files = tree.tree.filter(f =>
+            f.type === 'blob' &&
+            !f.path.includes('node_modules/') &&
+            !f.path.includes('.git/') &&
+            f.size < 1000000 // 1MB cap
+        );
+
+        if (files.length === 0) throw new Error('Κανένα αρχείο στο repo');
+
+        // 3. Clear & fetch contents in parallel batches
+        repoFiles = [];
+        await db.files.clear();
+        contextFiles = [];
+        renderContextTags();
+
+        const newFiles = [];
+        let done = 0;
+        const BATCH = 6;
+        for (let i = 0; i < files.length; i += BATCH) {
+            const batch = files.slice(i, i + BATCH);
+            const results = await Promise.all(batch.map(async f => {
+                try {
+                    // Use blob API if we have a token (better rate limit), else raw
+                    if (ghToken) {
+                        const r = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/blobs/${f.sha}`, { headers });
+                        if (!r.ok) return null;
+                        const data = await r.json();
+                        const isText = isTextFile(f.path);
+                        let content;
+                        if (isText) {
+                            // Decode base64 → text (UTF-8)
+                            try {
+                                content = decodeBase64Utf8(data.content.replace(/\n/g, ''));
+                            } catch {
+                                return null;
+                            }
+                        } else {
+                            content = data.content.replace(/\n/g, '');
+                        }
+                        return { path: f.path, content, sha: f.sha, binary: !isText, modified: false };
+                    } else {
+                        // Raw URL (only works for public repos)
+                        const r = await fetch(`https://raw.githubusercontent.com/${ghOwner}/${ghRepo}/${branch}/${f.path}`);
+                        if (!r.ok) return null;
+                        const isText = isTextFile(f.path);
+                        let content;
+                        if (isText) {
+                            content = await r.text();
+                        } else {
+                            const blob = await r.blob();
+                            if (blob.size > 1024 * 1024) return null;
+                            content = await blobToBase64(blob);
+                        }
+                        return { path: f.path, content, sha: f.sha, binary: !isText, modified: false };
+                    }
+                } catch (err) {
+                    console.warn('Failed:', f.path, err.message);
+                    return null;
+                }
+            }));
+            results.filter(Boolean).forEach(c => newFiles.push(c));
+            done += batch.length;
+            setProgress(15 + (done / files.length) * 80);
+        }
+
+        repoFiles = newFiles;
+        await db.files.bulkPut(newFiles);
+        updateProjectName();
+        renderFileList();
+        setProgress(100);
+
+        appendBubble('system', `✅ ${repoFiles.length} αρχεία ελήφθησαν από <code>${escHtml(branch)}</code>.`);
+        showToast(`${repoFiles.length} αρχεία ✓`, 'success');
+    } catch (e) {
+        console.error(e);
+        setProgress(null);
+        appendBubble('system', `❌ ${escHtml(e.message)}`);
+        showToast('Σφάλμα: ' + e.message, 'error');
+    }
+}
+
+function decodeBase64Utf8(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+}
+
+function encodeBase64Utf8(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+// ===================== GITHUB PUSH =====================
+function pushToGitHub() {
+    if (!ghOwner || !ghRepo) { openSettings(); showToast('Ρύθμισε GitHub'); return; }
+    if (!ghToken) { openSettings(); showToast('Χρειάζεσαι GitHub token για push'); return; }
+    if (!repoFiles.length) { showToast('Κανένα αρχείο'); return; }
+
+    const modified = repoFiles.filter(f => f.modified);
+    const sub = document.getElementById('commitSubtitle');
+    if (modified.length === 0) {
+        sub.innerHTML = '⚠️ Δεν υπάρχουν αλλαγές. Θα ανέβουν <b>όλα</b> τα αρχεία.';
+    } else {
+        sub.innerHTML = `Θα ανέβουν <b>${modified.length}</b> αλλαγμένα αρχεία.`;
+    }
+    document.getElementById('commitMsg').value = `Update ${modified.length || repoFiles.length} files from DeepForge`;
+    document.getElementById('commitModal').classList.remove('hidden');
+}
+
+async function doPushToGitHub() {
+    const commitMsg = document.getElementById('commitMsg').value.trim() || 'Update from DeepForge';
+    document.getElementById('commitModal').classList.add('hidden');
+
+    setProgress(2);
+    appendBubble('system', `⬆ Push σε <code>${escHtml(ghOwner)}/${escHtml(ghRepo)}</code>...`);
+
+    const headers = {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${ghToken}`,
+        'Content-Type': 'application/json'
+    };
+
+    try {
+        // Get default branch if not set
+        let branch = ghBranch;
+        if (!branch) {
+            const r = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}`, { headers });
+            if (!r.ok) throw new Error(`Repo info: ${r.status}`);
+            branch = (await r.json()).default_branch;
+        }
+        setProgress(10);
+
+        // Get latest commit SHA on branch
+        const refResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/refs/heads/${branch}`, { headers });
+        if (!refResp.ok) throw new Error(`Ref ${branch}: ${refResp.status}`);
+        const refData = await refResp.json();
+        const latestCommitSha = refData.object.sha;
+        setProgress(20);
+
+        // Get latest commit's tree SHA
+        const commitResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/commits/${latestCommitSha}`, { headers });
+        if (!commitResp.ok) throw new Error(`Commit: ${commitResp.status}`);
+        const commitData = await commitResp.json();
+        const baseTreeSha = commitData.tree.sha;
+        setProgress(30);
+
+        // Determine which files to upload (modified, or all if none marked)
+        const modified = repoFiles.filter(f => f.modified);
+        const toUpload = modified.length > 0 ? modified : repoFiles;
+
+        // Create blobs for each file
+        const treeEntries = [];
+        let done = 0;
+        const BATCH = 5;
+        for (let i = 0; i < toUpload.length; i += BATCH) {
+            const batch = toUpload.slice(i, i + BATCH);
+            const blobs = await Promise.all(batch.map(async f => {
+                const isBinary = f.binary;
+                const body = isBinary
+                    ? { content: f.content, encoding: 'base64' }
+                    : { content: f.content, encoding: 'utf-8' };
+                const r = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/blobs`, {
+                    method: 'POST', headers, body: JSON.stringify(body)
+                });
+                if (!r.ok) {
+                    const err = await r.text();
+                    throw new Error(`Blob ${f.path}: ${r.status} ${err.slice(0,100)}`);
+                }
+                const data = await r.json();
+                return { path: f.path, mode: '100644', type: 'blob', sha: data.sha };
+            }));
+            blobs.forEach(b => treeEntries.push(b));
+            done += batch.length;
+            setProgress(30 + (done / toUpload.length) * 50);
+        }
+
+        // Create new tree
+        const treeResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/trees`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries })
+        });
+        if (!treeResp.ok) throw new Error(`Tree: ${treeResp.status} ${await treeResp.text()}`);
+        const newTree = await treeResp.json();
+        setProgress(85);
+
+        // Create commit
+        const newCommitResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/commits`, {
+            method: 'POST', headers,
+            body: JSON.stringify({
+                message: commitMsg,
+                tree: newTree.sha,
+                parents: [latestCommitSha]
+            })
+        });
+        if (!newCommitResp.ok) throw new Error(`Commit: ${newCommitResp.status}`);
+        const newCommit = await newCommitResp.json();
+        setProgress(95);
+
+        // Update ref
+        const updateRefResp = await fetch(`https://api.github.com/repos/${ghOwner}/${ghRepo}/git/refs/heads/${branch}`, {
+            method: 'PATCH', headers,
+            body: JSON.stringify({ sha: newCommit.sha })
+        });
+        if (!updateRefResp.ok) throw new Error(`Update ref: ${updateRefResp.status}`);
+
+        // Mark all as unmodified
+        repoFiles.forEach(f => f.modified = false);
+        await db.files.bulkPut(repoFiles);
+        renderFileList();
+        setProgress(100);
+
+        appendBubble('system', `✅ Push OK! Commit: <code>${newCommit.sha.slice(0,7)}</code>`);
+        showToast(`Push ✓ ${toUpload.length} αρχεία`, 'success');
+    } catch (e) {
+        console.error(e);
+        setProgress(null);
+        appendBubble('system', `❌ Push απέτυχε: ${escHtml(e.message)}`);
+        showToast('Push απέτυχε: ' + e.message, 'error');
+    }
+}
+
+// ===================== FILE OPS =====================
+async function downloadAll() {
+    if (!repoFiles.length) return showToast('Κανένα αρχείο');
+    showToast('Δημιουργία ZIP...');
+    const zip = new JSZip();
+    repoFiles.forEach(f => {
+        if (f.binary) {
+            zip.file(f.path, f.content, { base64: true });
+        } else {
+            zip.file(f.path, f.content);
+        }
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (ghRepo || 'project') + '.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showToast('ZIP κατεβαίνει...', 'success');
+}
+
+function downloadSingle(path) {
+    const f = repoFiles.find(x => x.path === path);
+    if (!f) return;
+    let blob;
+    if (f.binary) {
+        const bytes = atob(f.content);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        blob = new Blob([arr]);
+    } else {
+        blob = new Blob([f.content], { type: 'text/plain' });
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = path.split('/').pop();
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function deleteFile(path) {
+    if (!confirm(`Διαγραφή ${path};`)) return;
+    repoFiles = repoFiles.filter(f => f.path !== path);
+    await db.files.delete(path);
+    contextFiles = contextFiles.filter(p => p !== path);
+    await db.recent.delete(path).catch(()=>{});
+    renderFileList();
+    renderContextTags();
+    showToast('Διαγράφηκε');
+}
+
+async function renameFile(oldPath) {
+    const newPath = prompt('Νέο path:', oldPath);
+    if (!newPath || newPath === oldPath) return;
+    const trimmed = newPath.trim();
+    if (!trimmed) return;
+    if (repoFiles.some(f => f.path === trimmed)) {
+        showToast('Υπάρχει ήδη αρχείο με αυτό το path', 'error');
+        return;
+    }
+    const f = repoFiles.find(x => x.path === oldPath);
+    if (!f) return;
+    f.path = trimmed;
+    f.modified = true;
+    await db.files.delete(oldPath);
+    await db.files.put(f);
+    contextFiles = contextFiles.map(p => p === oldPath ? trimmed : p);
+    renderFileList();
+    renderContextTags();
+    showToast('Μετονομάστηκε');
+}
+
+async function createNewFile() {
+    const name = prompt('Όνομα αρχείου (π.χ. src/utils.js):');
+    if (!name?.trim()) return;
+    const path = name.trim();
+    if (repoFiles.some(f => f.path === path)) {
+        showToast('Υπάρχει ήδη', 'error');
+        return;
+    }
+    const newFile = { path, content: '', binary: false, modified: true, sha: null };
+    repoFiles.push(newFile);
+    await db.files.put(newFile);
+    renderFileList();
+    openViewer(path);
+    showToast('Δημιουργήθηκε');
+}
+
+// ===================== VIEWER =====================
+async function openViewer(path) {
+    const f = repoFiles.find(x => x.path === path);
+    if (!f) return;
+    currentViewerPath = path;
+    viewerDirty = false;
+
+    document.getElementById('viewerFileName').textContent = path;
+    document.getElementById('viewerStatus').textContent = (getExt(path) || 'FILE').toUpperCase() + (f.modified ? ' • modified' : '');
+    document.getElementById('viewerSaveBtn').classList.remove('dirty');
+
+    const body = document.getElementById('viewerBody');
+
+    // Binary preview
+    if (f.binary) {
+        const ext = getExt(path);
+        if (BINARY_PREVIEW_EXTS.has(ext)) {
+            const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+            body.innerHTML = `<div class="binary-preview">
+                <img src="data:${mime};base64,${f.content}" alt="${escHtml(path)}">
+                <div>Binary file • ${(atob(f.content).length / 1024).toFixed(1)} KB</div>
+            </div>`;
+        } else {
+            body.innerHTML = `<div class="binary-preview">
+                <div style="font-size:48px;opacity:0.3;">📦</div>
+                <div>Binary file (${getExt(path).toUpperCase()})</div>
+                <div style="font-size:11px;">~${(atob(f.content).length / 1024).toFixed(1)} KB</div>
+            </div>`;
+        }
+        viewerOriginal = f.content;
+        document.getElementById('viewerModal').classList.add('open');
+        return;
+    }
+
+    // Restore textarea body if it was replaced
+    body.innerHTML = `<div class="viewer-linenums" id="viewerLineNums"></div>
+        <textarea class="viewer-textarea" id="viewerTextarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>`;
+
+    const ta = document.getElementById('viewerTextarea');
+    ta.value = f.content;
+    viewerOriginal = f.content;
+    updateLineNums();
+
+    // Track recent
+    try {
+        await db.recent.put({ path, lastOpened: Date.now() });
+    } catch {}
+
+    ta.oninput = () => {
+        updateLineNums();
+        if (!viewerDirty) {
+            viewerDirty = true;
+            document.getElementById('viewerSaveBtn').classList.add('dirty');
+        }
+        // Auto-save after 1.5s of no input
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(() => saveViewerFile(true), 1500);
+    };
+    ta.onscroll = () => {
+        document.getElementById('viewerLineNums').scrollTop = ta.scrollTop;
+    };
+    ta.onclick = ta.onkeyup = () => updateCursor();
+
+    document.getElementById('viewerModal').classList.add('open');
+    setTimeout(() => updateCursor(), 50);
+}
+
+function updateLineNums() {
+    const ta = document.getElementById('viewerTextarea');
+    if (!ta) return;
+    const count = ta.value.split('\n').length;
+    let s = '';
+    for (let i = 1; i <= count; i++) s += i + '\n';
+    document.getElementById('viewerLineNums').textContent = s;
+}
+
+function updateCursor() {
+    const ta = document.getElementById('viewerTextarea');
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const text = ta.value.substring(0, pos);
+    const ln = text.split('\n').length;
+    const col = pos - (text.lastIndexOf('\n') + 1) + 1;
+    document.getElementById('viewerCursor').textContent = `Ln ${ln}, Col ${col}`;
+}
+
+function closeViewer() {
+    if (viewerDirty) {
+        const ok = confirm('Έχεις μη αποθηκευμένες αλλαγές. Έξοδος χωρίς αποθήκευση;');
+        if (!ok) return;
+    }
+    clearTimeout(autoSaveTimer);
+    document.getElementById('viewerModal').classList.remove('open');
+    currentViewerPath = null;
+    viewerDirty = false;
+}
+
+async function saveViewerFile(silent) {
+    if (!currentViewerPath) return;
+    const ta = document.getElementById('viewerTextarea');
+    if (!ta) return;
+    const newContent = ta.value;
+    const f = repoFiles.find(x => x.path === currentViewerPath);
+    if (!f) return;
+    if (f.content === newContent) {
+        if (!silent) showToast('Καμία αλλαγή');
+        return;
+    }
+    f.content = newContent;
+    f.modified = true;
+    await db.files.put(f);
+    viewerDirty = false;
+    viewerOriginal = newContent;
+    document.getElementById('viewerSaveBtn').classList.remove('dirty');
+    document.getElementById('viewerStatus').textContent = (getExt(currentViewerPath) || 'FILE').toUpperCase() + ' • modified';
+    renderFileList();
+    if (!silent) showToast(`Αποθηκεύτηκε: ${currentViewerPath.split('/').pop()}`, 'success');
+}
+
+function addViewerToContext() {
+    if (currentViewerPath) {
+        addContextFile(currentViewerPath);
+        showToast('Προστέθηκε στο context');
+    }
+}
+
+// ===================== RECENT =====================
+async function renderRecentList() {
+    const container = document.getElementById('recentList');
+    try {
+        const items = await db.recent.orderBy('lastOpened').reverse().limit(20).toArray();
+        const valid = items.filter(it => repoFiles.some(f => f.path === it.path));
+        if (valid.length === 0) {
+            container.innerHTML = `<div class="files-empty"><div class="empty-icon">⟨/⟩</div><p>Δεν έχεις ανοίξει αρχεία</p><p style="font-size:12px;">Άνοιξε ένα από το <b>Files</b></p></div>`;
+            return;
+        }
+        let html = '';
+        const now = Date.now();
+        for (const it of valid) {
+            const name = it.path.split('/').pop();
+            const ago = formatTimeAgo(now - it.lastOpened);
+            html += `<div class="recent-item" data-path="${attrEsc(it.path)}">
+                <span class="file-icon">${getFileIcon(name)}</span>
+                <div class="recent-info">
+                    <div class="recent-path">${escHtml(it.path)}</div>
+                    <div class="recent-time">${ago}</div>
+                </div>
+            </div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="files-empty"><p>Σφάλμα ${escHtml(e.message)}</p></div>`;
+    }
+}
+
+document.getElementById('recentList').addEventListener('click', e => {
+    const item = e.target.closest('.recent-item');
+    if (item) openViewer(item.dataset.path);
+});
+
+function formatTimeAgo(ms) {
+    const sec = Math.floor(ms / 1000);
+    if (sec < 60) return 'μόλις τώρα';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min} λ. πριν`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} ώ. πριν`;
+    const d = Math.floor(h / 24);
+    return `${d} ημ. πριν`;
+}
+
+// ===================== CONTEXT =====================
+function addContextFile(path) {
+    if (!contextFiles.includes(path)) {
+        contextFiles.push(path);
+        if (contextFiles.length > 10) contextFiles.shift();
+    }
+    renderContextTags();
+}
+
+function removeContextFile(path) {
+    contextFiles = contextFiles.filter(p => p !== path);
+    renderContextTags();
+}
+
+function renderContextTags() {
+    const el = document.getElementById('contextTags');
+    el.innerHTML = '';
+    contextFiles.forEach(p => {
+        const span = document.createElement('span');
+        span.className = 'ctx-tag';
+        const name = p.split('/').pop();
+        span.textContent = name;
+        const x = document.createElement('span');
+        x.className = 'remove';
+        x.textContent = '✕';
+        x.onclick = () => removeContextFile(p);
+        span.appendChild(x);
+        el.appendChild(span);
+    });
+}
+
+// ===================== SEARCH =====================
+function doSearch() {
+    const q = document.getElementById('searchInput')?.value.trim();
+    if (!q) return;
+    const results = searchFiles(q);
+    const div = document.getElementById('searchResults');
+    if (results.length === 0) {
+        div.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);">Κανένα αποτέλεσμα</div>';
+        return;
+    }
+    const lowerQ = q.toLowerCase();
+    div.innerHTML = results.map(r => {
+        const linesHtml = r.lines.slice(0, 8).map(l => {
+            // Highlight matches
+            const safe = escHtml(l.text.slice(0, 200));
+            const idx = safe.toLowerCase().indexOf(lowerQ);
+            let html = safe;
+            if (idx > -1) {
+                html = safe.slice(0, idx) + '<mark>' + safe.slice(idx, idx + q.length) + '</mark>' + safe.slice(idx + q.length);
+            }
+            return `<div class="search-line"><span class="ln">${l.num}</span>${html}</div>`;
+        }).join('');
+        return `<div class="search-result-card">
+            <div class="search-result-header" data-path="${attrEsc(r.path)}">
+                <span class="search-result-file">${escHtml(r.path)}</span>
+                <span class="search-result-count">${r.matches} εμφ.</span>
+            </div>
+            <div class="search-result-lines">
+                ${linesHtml}
+                ${r.lines.length > 8 ? `<div class="search-line" style="color:var(--text-muted)">...και ${r.lines.length - 8} ακόμα</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+document.getElementById('searchResults').addEventListener('click', e => {
+    const h = e.target.closest('.search-result-header');
+    if (h) openViewer(h.dataset.path);
+});
+
+document.getElementById('searchInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doSearch();
+});
+
+function searchFiles(query) {
+    const results = [];
+    const lower = query.toLowerCase();
+    for (const f of repoFiles) {
+        if (f.binary) continue;
+        const lines = f.content.split('\n');
+        const matched = [];
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes(lower)) matched.push({ num: i + 1, text: lines[i].trim() });
+        }
+        if (matched.length > 0) results.push({ path: f.path, matches: matched.length, lines: matched });
+    }
+    return results;
+}
+
+// ===================== CHAT =====================
+function appendBubble(role, content, save = true) {
+    const div = document.getElementById('chatMessages');
+    const el = document.createElement('div');
+    el.className = `msg msg-${role}`;
+    if (role === 'assistant') {
+        el.innerHTML = formatMsg(content);
+    } else if (role === 'system') {
+        el.innerHTML = content; // trusted (only we set this)
+    } else {
+        el.textContent = content;
+    }
+    div.appendChild(el);
+    scrollChat();
+    if (save && role !== 'system') {
+        db.messages.add({ role, content, timestamp: Date.now() }).catch(()=>{});
+    }
+}
+
+function formatMsg(text) {
+    // Escape FIRST, then apply markdown
+    let escaped = escHtml(text);
+    // Code blocks (greedy match the inside)
+    escaped = escaped.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code.trim()}</code></pre>`);
+    // Inline code
+    escaped = escaped.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    // Bold
+    escaped = escaped.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    // Line breaks (only if not inside <pre>)
+    const parts = escaped.split(/(<pre>[\s\S]*?<\/pre>)/g);
+    return parts.map(p => p.startsWith('<pre>') ? p : p.replace(/\n/g, '<br>')).join('');
+}
+
+function scrollChat() {
+    const d = document.getElementById('chatMessages');
+    setTimeout(() => d.scrollTop = d.scrollHeight, 50);
+}
+
+async function clearChat() {
+    if (!confirm('Καθαρισμός ιστορικού;')) return;
+    await db.messages.clear();
+    document.getElementById('chatMessages').innerHTML = '<div class="msg msg-system">Ιστορικό καθαρίστηκε.</div>';
+    pendingChange = null;
+}
+
+function showTyping() {
+    const div = document.getElementById('chatMessages');
+    const el = document.createElement('div');
+    el.className = 'msg msg-assistant';
+    el.id = 'typingEl';
+    el.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+    div.appendChild(el);
+    scrollChat();
+}
+function removeTyping() { document.getElementById('typingEl')?.remove(); }
+
+async function sendMessage() {
+    if (isProcessing) return;
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    input.style.height = 'auto';
+
+    const lower = text.toLowerCase().replace(/[^α-ωa-zά-ώ]/g, '');
+    if ((lower === 'ναι' || lower === 'yes' || lower === 'ναί') && pendingChange) {
+        await applyChange(pendingChange.path, pendingChange.content);
+        return;
+    }
+    if ((lower === 'οχι' || lower === 'όχι' || lower === 'no') && pendingChange) {
+        appendBubble('system', 'Ακυρώθηκε.');
+        pendingChange = null;
+        return;
+    }
+
+    appendBubble('user', text);
+    await doChat(text);
+}
+
+function getSystemPrompt() {
+    const base = customPrompt || `Είσαι ένας έμπειρος βοηθός ανάπτυξης λογισμικού. Μιλάς ελληνικά. Τεχνικούς όρους στα αγγλικά.
+
+## ΚΑΝΟΝΕΣ
+1. Μελέτησε τα αρχεία πριν απαντήσεις.
+2. Αν χρειάζεται αλλαγή, πρότεινε πρώτα τι θα αλλάξεις.
+3. Όταν ζητηθεί εφαρμογή, γράψε: ΕΦΑΡΜΟΓΗ_ΑΛΛΑΓΗΣ <filepath> ακολουθούμενο από τον πλήρη νέο κώδικα σε code block.
+4. ΠΑΝΤΑ γράψε τον πλήρη κώδικα — ΠΟΤΕ "// rest of code".
+5. Εξήγησε σύντομα κάθε αλλαγή.`;
+
+    // Don't dump ALL files — only paths, and limit to 200
+    const paths = repoFiles.map(f => f.path);
+    let fl;
+    if (paths.length === 0) {
+        fl = '\nΚανένα αρχείο φορτωμένο.';
+    } else if (paths.length <= 200) {
+        fl = '\n\nΑΡΧΕΙΑ PROJECT (' + paths.length + '):\n' + paths.map(p => '📄 ' + p).join('\n');
+    } else {
+        fl = '\n\nΑΡΧΕΙΑ PROJECT (' + paths.length + ' total, showing first 200):\n' + paths.slice(0, 200).map(p => '📄 ' + p).join('\n') + '\n... +' + (paths.length - 200) + ' ακόμα';
+    }
+    return base + fl;
+}
+
+function getContextContent() {
+    const files = contextFiles.map(p => repoFiles.find(f => f.path === p)).filter(f => f && !f.binary);
+    if (files.length === 0) return '';
+    return '\n\n=== ΠΕΡΙΕΧΟΜΕΝΑ ΑΡΧΕΙΩΝ ===\n' + files.map(f => `=== ${f.path} ===\n${f.content}`).join('\n\n');
+}
+
+async function doChat(text) {
+    isProcessing = true;
+    document.getElementById('sendBtn').disabled = true;
+    showTyping();
+    try {
+        const apiKey = await getSetting('apiKey');
+        if (!apiKey) throw new Error('Ρύθμισε API key στις ρυθμίσεις.');
+
+        const ctx = getContextContent();
+        const allMsgs = await db.messages.orderBy('timestamp').toArray();
+        const history = allMsgs.slice(-12);
+
+        const messages = [{ role: 'system', content: getSystemPrompt() }];
+        if (ctx) messages.push({ role: 'system', content: ctx });
+        for (const m of history) {
+            if (m.role === 'user' || m.role === 'assistant') messages.push({ role: m.role, content: m.content });
+        }
+        messages.push({ role: 'user', content: text });
+
+        const resp = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({ model, messages, temperature: 0.2, max_tokens: 8000 })
+        });
+
+        if (!resp.ok) {
+            let errMsg = `HTTP ${resp.status}`;
+            try {
+                const err = await resp.json();
+                errMsg = err.error?.message || errMsg;
+            } catch {}
+            throw new Error(errMsg);
+        }
+
+        const data = await resp.json();
+        const reply = data.choices?.[0]?.message?.content || 'Κενή απάντηση.';
+
+        removeTyping();
+
+        const { clean, change } = parseChanges(reply);
+        if (change) {
+            pendingChange = change;
+            appendBubble('assistant', clean || 'Προτείνω αλλαγή:');
+            // Action bubble
+            const div = document.getElementById('chatMessages');
+            const ab = document.createElement('div');
+            ab.className = 'msg msg-assistant';
+            const preview = change.content.length > 600 ? change.content.substring(0, 600) + '\n...' : change.content;
+            ab.innerHTML = `
+                <div style="margin-bottom:8px">📝 <strong>${escHtml(change.path)}</strong> <span style="color:var(--text-muted);font-size:11px;">(${change.content.length} chars)</span></div>
+                <pre><code>${escHtml(preview)}</code></pre>
+                <div class="action-buttons">
+                    <button class="diff-btn" id="btnShowDiff">👁 Diff</button>
+                    <button class="apply-btn" id="btnApply">✓ Εφαρμογή</button>
+                    <button class="reject-btn" id="btnReject">✕ Άκυρο</button>
+                </div>`;
+            div.appendChild(ab);
+            ab.querySelector('#btnShowDiff').onclick = () => showDiffForPending();
+            ab.querySelector('#btnApply').onclick = () => applyChange(change.path, change.content);
+            ab.querySelector('#btnReject').onclick = () => rejectChange();
+            scrollChat();
+        } else {
+            appendBubble('assistant', reply);
+        }
+    } catch (e) {
+        console.error(e);
+        removeTyping();
+        appendBubble('system', `❌ ${escHtml(e.message)}`);
+        showToast('Σφάλμα: ' + e.message, 'error');
+    } finally {
+        isProcessing = false;
+        document.getElementById('sendBtn').disabled = false;
+    }
+}
+
+function parseChanges(reply) {
+    // Match: ΕΦΑΡΜΟΓΗ_ΑΛΛΑΓΗΣ <path> followed by content (possibly in code fences)
+    const re = /ΕΦΑΡΜΟΓΗ_ΑΛΛΑΓΗΣ\s+(\S+)\s*\n([\s\S]*?)(?=\nΕΦΑΡΜΟΓΗ_ΑΛΛΑΓΗΣ|$)/;
+    const m = reply.match(re);
+    if (!m) return { clean: reply, change: null };
+    let content = m[2].trim();
+    // Strip surrounding code fences
+    const fenceMatch = content.match(/^```\w*\n([\s\S]*?)\n```\s*$/);
+    if (fenceMatch) content = fenceMatch[1];
+    return { clean: reply.replace(re, '').trim(), change: { path: m[1].trim(), content } };
+}
+
+async function applyChange(path, content) {
+    if (!path) return;
+    if (content == null) content = pendingChange?.content;
+    if (content == null) return;
+    const idx = repoFiles.findIndex(f => f.path === path);
+    if (idx !== -1) {
+        repoFiles[idx].content = content;
+        repoFiles[idx].modified = true;
+        repoFiles[idx].binary = false;
+        await db.files.put(repoFiles[idx]);
+    } else {
+        const newFile = { path, content, binary: false, modified: true, sha: null };
+        repoFiles.push(newFile);
+        await db.files.put(newFile);
+    }
+    appendBubble('system', `✅ <code>${escHtml(path)}</code> ενημερώθηκε.`);
+    pendingChange = null;
+    closeDiff();
+    renderFileList();
+    if (currentViewerPath === path) openViewer(path);
+    showToast(`✓ ${path.split('/').pop()}`, 'success');
+}
+
+function rejectChange() {
+    pendingChange = null;
+    appendBubble('system', 'Ακυρώθηκε.');
+    closeDiff();
+}
+
+// ===================== DIFF VIEW =====================
+function showDiffForPending() {
+    if (!pendingChange) return;
+    const f = repoFiles.find(x => x.path === pendingChange.path);
+    const oldContent = f ? f.content : '';
+    showDiff(pendingChange.path, oldContent, pendingChange.content);
+}
+
+function showDiff(path, oldText, newText) {
+    document.getElementById('diffFileName').textContent = path;
+    const diff = computeDiff(oldText, newText);
+    let html = '';
+    for (const line of diff) {
+        const cls = line.type === 'add' ? 'add' : (line.type === 'del' ? 'del' : 'ctx');
+        html += `<div class="diff-line ${cls}"><span class="lnum">${line.num || ''}</span><span class="ldata">${escHtml(line.text)}</span></div>`;
+    }
+    document.getElementById('diffContent').innerHTML = html;
+    document.getElementById('diffModal').classList.add('open');
+}
+
+function computeDiff(oldText, newText) {
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+    // Simple LCS-based diff
+    const m = oldLines.length, n = newLines.length;
+    // Cap at 5000 lines for perf
+    if (m > 5000 || n > 5000) {
+        return [
+            { type: 'ctx', text: `[Diff πολύ μεγάλο: ${m} → ${n} γραμμές]` },
+            ...newLines.slice(0, 100).map((t, i) => ({ type: 'add', text: t, num: i + 1 }))
+        ];
+    }
+    const dp = Array(m + 1).fill(null).map(() => new Int32Array(n + 1));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (oldLines[i-1] === newLines[j-1]) dp[i][j] = dp[i-1][j-1] + 1;
+            else dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+        }
+    }
+    const result = [];
+    let i = m, j = n;
+    while (i > 0 && j > 0) {
+        if (oldLines[i-1] === newLines[j-1]) {
+            result.push({ type: 'ctx', text: oldLines[i-1], num: i });
+            i--; j--;
+        } else if (dp[i-1][j] >= dp[i][j-1]) {
+            result.push({ type: 'del', text: oldLines[i-1], num: i });
+            i--;
+        } else {
+            result.push({ type: 'add', text: newLines[j-1], num: j });
+            j--;
+        }
+    }
+    while (i > 0) { result.push({ type: 'del', text: oldLines[i-1], num: i }); i--; }
+    while (j > 0) { result.push({ type: 'add', text: newLines[j-1], num: j }); j--; }
+    return result.reverse();
+}
+
+function closeDiff() {
+    document.getElementById('diffModal').classList.remove('open');
+}
+
+function applyPendingFromDiff() {
+    if (pendingChange) applyChange(pendingChange.path, pendingChange.content);
+}
+
+// ===================== QUICK ACTIONS =====================
+function quickAction(type) {
+    if (currentViewerPath) addContextFile(currentViewerPath);
+    const target = currentViewerPath || (contextFiles.length ? contextFiles[contextFiles.length - 1] : null);
+    if (!target) { showToast('Άνοιξε πρώτα ένα αρχείο'); return; }
+    const prompts = {
+        explain: `Εξήγησέ μου τι κάνει το αρχείο ${target}. Ανάλυσε τη δομή.`,
+        fix: `Εξέτασε το ${target} για bugs. Πρότεινε διορθώσεις.`,
+        refactor: `Πρότεινε refactoring για το ${target}.`,
+        test: `Γράψε unit tests για το ${target}.`,
+        review: `Κάνε code review στο ${target}. Βρες προβλήματα.`
+    };
+    switchTab('chat');
+    document.getElementById('chatInput').value = prompts[type];
+    sendMessage();
+}
+
+// ===================== INPUT HANDLERS =====================
+document.getElementById('chatInput').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+});
+
+document.getElementById('chatInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+// Warn before unloading with unsaved changes
+window.addEventListener('beforeunload', e => {
+    if (viewerDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+// Mobile keyboard handling — close viewer when back button on mobile
+window.addEventListener('popstate', () => {
+    if (document.getElementById('diffModal').classList.contains('open')) closeDiff();
+    else if (document.getElementById('viewerModal').classList.contains('open')) closeViewer();
+});
+</script>
+</body>
+</html>
